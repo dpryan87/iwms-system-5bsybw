@@ -1,0 +1,152 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-config
+  namespace: monitoring
+  labels:
+    app: jaeger
+    component: monitoring
+    part-of: iwms
+data:
+  # Main Jaeger configuration file
+  jaeger.yml: |
+    service_name: iwms-tracing
+    disabled: false
+    reporter:
+      logSpans: true
+      queueSize: 1000
+      bufferFlushInterval: 1s
+      localAgentHostPort: "jaeger-agent:6831"
+      
+    sampler:
+      type: probabilistic
+      param: 1.0
+      options:
+        sampling.param: 1.0
+        
+    # Operation-specific sampling strategies
+    strategies:
+      default:
+        type: probabilistic
+        param: 1.0
+      perOperation:
+        # High-volume endpoints with reduced sampling
+        - operation: "HTTP GET /api/v1/floor-plans"
+          type: probabilistic
+          param: 0.5
+        # Critical operations with full sampling
+        - operation: "HTTP GET /api/v1/occupancy"
+          type: probabilistic
+          param: 1.0
+        - operation: "HTTP POST /api/v1/leases"
+          type: probabilistic
+          param: 1.0
+
+  # Storage configuration
+  storage.yml: |
+    type: elasticsearch
+    options:
+      es:
+        server-urls: http://elasticsearch:9200
+        username: ${ELASTIC_USER}
+        password: ${ELASTIC_PASSWORD}
+        index-prefix: jaeger-iwms
+        max-span-age: 7d
+        num-shards: 5
+        num-replicas: 1
+        max-doc-count: 20000000
+        bulk:
+          size: 5000000
+          workers: 1
+          flush-interval: 200ms
+    
+    # Retention and archival settings
+    retention:
+      schedule: "0 0 * * *"
+      days: 7
+      
+  # Agent configuration
+  agent.yml: |
+    collector:
+      host-port: "jaeger-collector:14250"
+      queue-size: 1000
+      batch-size: 100
+      batch-timeout: 1s
+    
+    processors:
+      batch:
+        timeout: 1s
+        send-batch-size: 100
+    
+    resources:
+      limits:
+        memory: "256Mi"
+        cpu: "200m"
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+
+  # Collector configuration
+  collector.yml: |
+    collector:
+      queue-size: 2000
+      num-workers: 50
+      http-server:
+        host-port: ":14268"
+      grpc-server:
+        host-port: ":14250"
+      zipkin:
+        host-port: ":9411"
+    
+    resources:
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+
+  # UI configuration
+  ui.yml: |
+    query:
+      base-path: /jaeger
+      static-files: /usr/share/jaeger-ui-build/
+      port: 16686
+      
+    dependencies:
+      menuEnabled: true
+      dagMaxNumServices: 200
+      
+    tracking:
+      gaID: ""
+      trackErrors: true
+    
+    menu:
+      - label: "About Jaeger"
+        items:
+          - label: "Documentation"
+            url: "https://www.jaegertracing.io/docs/latest"
+
+  # Security configuration
+  security.yml: |
+    tls:
+      enabled: true
+      cert: /etc/jaeger/cert/tls.crt
+      key: /etc/jaeger/cert/tls.key
+      ca: /etc/jaeger/cert/ca.crt
+      
+    authentication:
+      enabled: true
+      type: oauth
+      oauth:
+        client-id: ${OAUTH_CLIENT_ID}
+        client-secret: ${OAUTH_CLIENT_SECRET}
+        issuer: ${OAUTH_ISSUER}
+        
+    authorization:
+      enabled: true
+      roles:
+        - name: admin
+          permissions: ["read", "write"]
+        - name: viewer
+          permissions: ["read"]
