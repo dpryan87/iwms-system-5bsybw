@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <!-- Character encoding and viewport configuration -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  
+  <!-- Primary Meta Tags -->
+  <title>Lightweight IWMS</title>
+  <meta name="description" content="Lightweight Integrated Workplace Management System - Streamline your workplace operations">
+  <meta name="application-name" content="IWMS">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="color-scheme" content="light dark">
+
+  <!-- Security Headers -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' fonts.googleapis.com; font-src 'self' fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' api.iwms.com;">
+  <meta http-equiv="X-Content-Type-Options" content="nosniff">
+  <meta http-equiv="X-Frame-Options" content="DENY">
+  <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+  <meta http-equiv="Strict-Transport-Security" content="max-age=31536000; includeSubDomains">
+
+  <!-- Preconnect to critical domains -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <!-- Favicons -->
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+  <!-- PWA manifest -->
+  <link rel="manifest" href="/manifest.json">
+
+  <!-- Critical CSS -->
+  <style>
+    /* Inline critical CSS for initial render */
+    :root {
+      color-scheme: light dark;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    #root {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .skip-link {
+      position: absolute;
+      left: -9999px;
+      z-index: 999;
+      padding: 1em;
+      background-color: white;
+      color: black;
+      text-decoration: none;
+    }
+    .skip-link:focus {
+      left: 0;
+    }
+  </style>
+
+  <!-- Fonts -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" media="print" onload="this.media='all'">
+
+  <!-- Global styles -->
+  <link rel="stylesheet" href="/src/styles/global.css">
+</head>
+<body>
+  <!-- Accessibility skip link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- React mount point -->
+  <div id="root" role="application"></div>
+
+  <!-- Portal container for modals -->
+  <div id="portal-root" aria-hidden="true"></div>
+
+  <!-- Error boundary container -->
+  <div id="error-boundary" role="alert" aria-live="polite"></div>
+
+  <!-- App initialization -->
+  <script type="module" src="/src/main.tsx"></script>
+
+  <!-- Offline support -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+          .catch(error => console.error('Service worker registration failed:', error));
+      });
+    }
+  </script>
+
+  <!-- Error tracking -->
+  <script>
+    window.addEventListener('error', function(event) {
+      console.error('Global error:', event.error);
+      // In production, this would send to error monitoring service
+    });
+  </script>
+</body>
+</html>
