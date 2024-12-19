@@ -1,0 +1,164 @@
+# Prometheus Configuration ConfigMap for Lightweight IWMS
+# Version: 2.45.0
+# Purpose: Enhanced monitoring configuration with HA support
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: monitoring
+  labels:
+    app: prometheus
+    component: monitoring
+    version: v2.45.0
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        environment: ${ENV}
+        cluster: iwms-cluster
+
+    # Storage and retention configuration
+    storage:
+      tsdb:
+        path: /prometheus
+        retention.time: 30d
+        retention.size: 50GB
+        wal:
+          retention.time: 12h
+
+    # High availability configuration
+    ha_config:
+      path_prefix: /ha-storage
+      listen_address: 0.0.0.0:9090
+      advertise_address: prometheus-0.prometheus:9090
+      gossip_interval: 5s
+      peer_timeout: 15s
+
+    # Scrape configurations
+    scrape_configs:
+      # Kubernetes pods scraping configuration
+      - job_name: 'kubernetes-pods'
+        scrape_interval: 30s
+        metrics_path: ${METRICS_PATH}
+        scheme: https
+        tls_config:
+          insecure_skip_verify: false
+          cert_file: /etc/prometheus/certs/client.crt
+          key_file: /etc/prometheus/certs/client.key
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ['default', 'monitoring', 'iwms']
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: (\d+)
+            replacement: $1
+            target_label: __metrics_port__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+
+      # Node exporter metrics
+      - job_name: 'node-exporter'
+        scrape_interval: 30s
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - action: labelmap
+            regex: __meta_kubernetes_node_label_(.+)
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            regex: (.+)
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics
+
+  recording_rules.yml: |
+    groups:
+      - name: iwms_sla_recording_rules
+        interval: 1m
+        rules:
+          - record: job:http_requests_total:rate5m
+            expr: sum(rate(http_requests_total[5m])) by (job)
+          - record: job:http_request_duration_seconds:p95
+            expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job))
+          - record: job:container_memory_usage:max
+            expr: max(container_memory_usage_bytes) by (job)
+
+  alerting_rules.yml: |
+    groups:
+      - name: iwms_alerts
+        rules:
+          # Service availability alerts
+          - alert: ServiceAvailability
+            expr: sum(up{job=~".*"}) by (job) < 1
+            for: 5m
+            labels:
+              severity: critical
+              team: platform
+            annotations:
+              summary: "Service {{ $labels.job }} is down"
+              description: "Service has been down for more than 5 minutes"
+
+          # High latency alerts
+          - alert: HighLatencyP95
+            expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, service)) > 2
+            for: 10m
+            labels:
+              severity: warning
+              team: application
+            annotations:
+              summary: "High P95 latency for {{ $labels.service }}"
+              description: "95th percentile latency is above 2 seconds for 10 minutes"
+
+          # Memory usage alerts
+          - alert: HighMemoryUsage
+            expr: container_memory_usage_bytes > container_spec_memory_limit_bytes * 0.9
+            for: 15m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "High memory usage on {{ $labels.pod }}"
+              description: "Container memory usage is above 90% of limit for 15 minutes"
+
+          # CPU usage alerts
+          - alert: HighCPUUsage
+            expr: sum(rate(container_cpu_usage_seconds_total[5m])) by (pod) > 0.9
+            for: 15m
+            labels:
+              severity: warning
+              team: platform
+            annotations:
+              summary: "High CPU usage on {{ $labels.pod }}"
+              description: "Container CPU usage is above 90% for 15 minutes"
+
+  ha_config.yml: |
+    # High Availability Configuration
+    ha:
+      enabled: true
+      cluster:
+        peers:
+          - prometheus-0.prometheus:9090
+          - prometheus-1.prometheus:9090
+          - prometheus-2.prometheus:9090
+      replication:
+        factor: 2
+        timeout: 10s
+      tsdb:
+        out_of_order_time_window: 10m
