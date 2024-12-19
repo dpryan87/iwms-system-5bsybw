@@ -1,0 +1,211 @@
+# Backend Continuous Integration Workflow
+# Version: 1.0.0
+# This workflow implements comprehensive build, test, lint, and security scanning processes 
+# for the backend service with optimized caching and artifact management.
+
+name: Backend CI
+
+# Trigger workflow on push and pull requests to main/develop branches
+# Only when changes are made to backend files
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/backend/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'src/backend/**'
+
+# Environment configuration
+env:
+  NODE_ENV: test
+  CI: true
+  NODE_VERSION: '18.x'
+
+jobs:
+  # Build job - Compiles TypeScript and creates production build
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('src/backend/package-lock.json') }}
+          restore-keys: |
+            npm-
+
+      - name: Install dependencies
+        working-directory: src/backend
+        run: npm ci
+
+      - name: Run TypeScript build
+        working-directory: src/backend
+        run: npm run build
+
+      - name: Cache build artifacts
+        uses: actions/cache@v3
+        with:
+          path: src/backend/dist
+          key: build-${{ github.sha }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: src/backend/dist
+          retention-days: 7
+
+  # Test job - Runs unit and integration tests with coverage
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('src/backend/package-lock.json') }}
+
+      - name: Install dependencies
+        working-directory: src/backend
+        run: npm ci
+
+      - name: Run unit tests
+        working-directory: src/backend
+        run: npm run test:coverage
+
+      - name: Run integration tests
+        working-directory: src/backend
+        run: npm run test:e2e
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-reports
+          path: src/backend/coverage
+          retention-days: 7
+
+      - name: Verify coverage thresholds
+        working-directory: src/backend
+        run: |
+          COVERAGE_REPORT="coverage/coverage-summary.json"
+          THRESHOLD=90
+          
+          BRANCHES=$(jq '.total.branches.pct' $COVERAGE_REPORT)
+          FUNCTIONS=$(jq '.total.functions.pct' $COVERAGE_REPORT)
+          LINES=$(jq '.total.lines.pct' $COVERAGE_REPORT)
+          STATEMENTS=$(jq '.total.statements.pct' $COVERAGE_REPORT)
+          
+          [[ $BRANCHES -ge $THRESHOLD ]] && \
+          [[ $FUNCTIONS -ge $THRESHOLD ]] && \
+          [[ $LINES -ge $THRESHOLD ]] && \
+          [[ $STATEMENTS -ge $THRESHOLD ]] || \
+          (echo "Coverage thresholds not met!" && exit 1)
+
+  # Lint job - Runs code quality checks
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('src/backend/package-lock.json') }}
+
+      - name: Install dependencies
+        working-directory: src/backend
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: src/backend
+        run: npm run lint
+
+      - name: Run Prettier check
+        working-directory: src/backend
+        run: npm run format -- --check
+
+  # Security job - Runs security scans and vulnerability checks
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        working-directory: src/backend
+        run: npm ci
+
+      - name: Run npm audit
+        working-directory: src/backend
+        run: npm run security:audit
+        continue-on-error: true
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@v3
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+          json: true
+          sarif: true
+
+      - name: Upload security scan results
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-report
+          path: snyk.sarif
+          retention-days: 7
+
+      - name: Check for known vulnerabilities
+        working-directory: src/backend
+        run: |
+          if [ -f snyk.sarif ]; then
+            HIGH_VULNS=$(jq '.runs[].results[] | select(.level=="error")' snyk.sarif | wc -l)
+            if [ $HIGH_VULNS -gt 0 ]; then
+              echo "Found $HIGH_VULNS high severity vulnerabilities!"
+              exit 1
+            fi
+          fi
