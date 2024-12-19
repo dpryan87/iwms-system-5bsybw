@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: iwms-redis
+  namespace: iwms
+  labels:
+    app: iwms
+    component: redis
+    environment: ${ENV}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9121"
+    backup.velero.io/backup-volumes: redis-data
+    checksum/config: ${CONFIG_CHECKSUM}
+spec:
+  replicas: 2
+  serviceName: iwms-redis-service
+  selector:
+    matchLabels:
+      app: iwms
+      component: redis
+  template:
+    metadata:
+      labels:
+        app: iwms
+        component: redis
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsNonRoot: true
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - iwms
+              - key: component
+                operator: In
+                values:
+                - redis
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: redis
+        image: redis:7.0-alpine
+        imagePullPolicy: IfNotPresent
+        command:
+        - redis-server
+        - /etc/redis/redis.conf
+        - --requirepass
+        - $(REDIS_PASSWORD)
+        ports:
+        - name: redis
+          containerPort: 6379
+          protocol: TCP
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        livenessProbe:
+          tcpSocket:
+            port: redis
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        - name: redis-config
+          mountPath: /etc/redis
+        - name: redis-tls
+          mountPath: /etc/redis/tls
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: iwms-redis-secret
+              key: REDIS_PASSWORD
+      - name: redis-exporter
+        image: oliver006/redis_exporter:v1.44.0
+        ports:
+        - name: metrics
+          containerPort: 9121
+          protocol: TCP
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
+        env:
+        - name: REDIS_ADDR
+          value: "redis://localhost:6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: iwms-redis-secret
+              key: REDIS_PASSWORD
+      volumes:
+      - name: redis-config
+        configMap:
+          name: iwms-redis-config
+      - name: redis-tls
+        secret:
+          secretName: iwms-redis-tls
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: standard
+      resources:
+        requests:
+          storage: 10Gi
