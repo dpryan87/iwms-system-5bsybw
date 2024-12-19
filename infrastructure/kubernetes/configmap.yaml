@@ -1,0 +1,85 @@
+# Kubernetes ConfigMap for IWMS Application
+# API Version: v1
+# Purpose: Store non-sensitive configuration for backend and frontend services
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iwms-config
+  namespace: iwms
+  labels:
+    app: iwms
+    environment: ${ENV}
+    component: config
+    managed-by: terraform
+data:
+  # Node.js Environment Settings
+  NODE_ENV: ${ENV}
+
+  # API Configuration
+  API_PORT: "3000"
+  API_BASE_URL: "/api/v1"
+  API_TIMEOUT: "30000"
+  API_REQUEST_LIMIT: "50mb"
+
+  # CORS Configuration
+  CORS_ORIGIN: ${CORS_ORIGIN}
+  CORS_METHODS: "GET,POST,PUT,DELETE,OPTIONS"
+  CORS_HEADERS: "Content-Type,Authorization,X-Requested-With"
+
+  # Database Configuration
+  DB_HOST: "iwms-postgresql"
+  DB_PORT: "5432"
+  DB_NAME: "iwms"
+  DB_SCHEMA: "public"
+  DB_SSL: "true"
+  DB_SSL_VERIFY: ${DB_SSL_VERIFY}
+  DB_POOL_MIN: "5"
+  DB_POOL_MAX: "20"
+  DB_TIMEOUT: "30000"
+
+  # Redis Cache Configuration
+  REDIS_HOST: "iwms-redis"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  REDIS_CLUSTER: "false"
+  REDIS_SENTINEL: "false"
+  REDIS_KEYPREFIX: "iwms:"
+  REDIS_TTL: "3600"
+
+  # Logging Configuration
+  LOG_LEVEL: ${LOG_LEVEL}
+  LOG_FORMAT: "json"
+  LOG_TIMESTAMP: "true"
+
+  # Metrics Configuration
+  METRICS_ENABLED: "true"
+  METRICS_PATH: "/metrics"
+  METRICS_INTERVAL: "15000"
+
+  # Application URLs
+  FRONTEND_URL: ${FRONTEND_URL}
+  BACKEND_URL: ${BACKEND_URL}
+
+  # WebSocket Configuration
+  WEBSOCKET_ENABLED: "true"
+  WEBSOCKET_PATH: "/ws"
+  WEBSOCKET_HEARTBEAT: "30000"
+
+  # File Upload Configuration
+  MAX_FILE_SIZE: "50mb"
+
+  # Rate Limiting Configuration
+  RATE_LIMIT_WINDOW: "3600000"
+  RATE_LIMIT_MAX: "1000"
+  RATE_LIMIT_SKIPFAILED: "true"
+
+  # Cache Configuration
+  CACHE_TTL: "3600"
+  CACHE_CHECK_PERIOD: "600"
+
+  # Request Configuration
+  REQUEST_TIMEOUT: "30000"
+
+  # Health Check Configuration
+  HEALTH_CHECK_PATH: "/health"
+  HEALTH_CHECK_INTERVAL: "30000"
