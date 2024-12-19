@@ -1,0 +1,265 @@
+# Grafana Configuration v9.5.0
+# Purpose: Enterprise monitoring configuration for Lightweight IWMS
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: monitoring
+  labels:
+    app: grafana
+    component: monitoring
+    version: 9.5.0
+data:
+  grafana.ini: |
+    # Server Configuration
+    [server]
+    protocol = https
+    domain = ${GRAFANA_DOMAIN}
+    root_url = https://${GRAFANA_DOMAIN}
+    serve_from_sub_path = false
+    cert_file = /etc/grafana/certs/tls.crt
+    cert_key = /etc/grafana/certs/tls.key
+    router_logging = true
+    enable_gzip = true
+
+    # Security Configuration
+    [security]
+    admin_password = ${GRAFANA_ADMIN_PASSWORD}
+    secret_key = ${GRAFANA_SECRET_KEY}
+    disable_gravatar = true
+    cookie_secure = true
+    cookie_samesite = strict
+    allow_embedding = false
+    strict_transport_security = true
+    strict_transport_security_max_age_seconds = 31536000
+    content_security_policy = true
+    content_security_policy_template = "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+
+    # Authentication Configuration
+    [auth]
+    disable_login_form = false
+    oauth_auto_login = false
+    disable_signout_menu = false
+    signout_redirect_url = ${SIGNOUT_REDIRECT_URL}
+    login_maximum_inactive_lifetime_duration = 7d
+    login_maximum_lifetime_duration = 30d
+
+    [auth.generic_oauth]
+    enabled = true
+    client_id = ${OAUTH_CLIENT_ID}
+    client_secret = ${OAUTH_CLIENT_SECRET}
+    auth_url = ${OAUTH_AUTH_URL}
+    token_url = ${OAUTH_TOKEN_URL}
+    api_url = ${OAUTH_API_URL}
+    allowed_domains = ${ALLOWED_DOMAINS}
+    allow_sign_up = true
+    role_attribute_path = contains(groups[*], 'grafana_admin') && 'Admin' || contains(groups[*], 'grafana_editor') && 'Editor' || 'Viewer'
+
+    # Database Configuration
+    [database]
+    type = postgres
+    host = ${GRAFANA_DB_HOST}
+    name = ${GRAFANA_DB_NAME}
+    user = ${GRAFANA_DB_USER}
+    password = ${GRAFANA_DB_PASSWORD}
+    ssl_mode = verify-full
+    max_idle_conn = 10
+    max_open_conn = 100
+    conn_max_lifetime = 14400
+
+    # Session Configuration
+    [session]
+    provider = postgres
+    provider_config = user=${GRAFANA_DB_USER} password=${GRAFANA_DB_PASSWORD} host=${GRAFANA_DB_HOST} port=5432 dbname=${GRAFANA_DB_NAME} sslmode=verify-full
+    cookie_secure = true
+    session_life_time = 86400
+    gc_interval_time = 86400
+
+    # Metrics Configuration
+    [metrics]
+    enabled = true
+    interval_seconds = 10
+    basic_auth_username = ${METRICS_USERNAME}
+    basic_auth_password = ${METRICS_PASSWORD}
+
+    # Unified Alerting Configuration
+    [unified_alerting]
+    enabled = true
+    execute_alerts = true
+    evaluation_timeout = 30s
+    max_attempts = 3
+    min_interval = 10s
+
+    # SMTP Configuration for Alerts
+    [smtp]
+    enabled = true
+    host = ${SMTP_HOST}:${SMTP_PORT}
+    user = ${SMTP_USER}
+    password = ${SMTP_PASSWORD}
+    from_address = ${SMTP_FROM}
+    from_name = IWMS Monitoring
+    startTLS_policy = MandatoryStartTLS
+
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      # Prometheus Datasource
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus-server:9090
+        isDefault: true
+        jsonData:
+          timeInterval: 30s
+          queryTimeout: 30s
+          httpMethod: POST
+          manageAlerts: true
+        secureJsonData:
+          httpHeaderValue1: ${PROMETHEUS_AUTH_TOKEN}
+        version: 1
+        editable: false
+
+      # Loki Datasource
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki:3100
+        jsonData:
+          maxLines: 1000
+          timeout: 30
+          derivedFields:
+            - name: TraceID
+              matcherRegex: "trace_id=(\\w+)"
+              url: "$${__value.raw}"
+              datasourceUid: jaeger
+        version: 1
+        editable: false
+
+      # Jaeger Datasource
+      - name: Jaeger
+        type: jaeger
+        access: proxy
+        url: http://jaeger-query:16686
+        jsonData:
+          nodeGraph:
+            enabled: true
+          tracesToLogs:
+            datasourceUid: loki
+            tags: ['job', 'instance', 'pod', 'namespace']
+        version: 1
+        editable: false
+
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+      - name: 'IWMS Dashboards'
+        orgId: 1
+        folder: 'IWMS'
+        folderUid: 'iwms'
+        type: file
+        disableDeletion: true
+        editable: false
+        allowUiUpdates: false
+        options:
+          path: /var/lib/grafana/dashboards
+          foldersFromFilesStructure: true
+
+  alerting.yaml: |
+    apiVersion: 1
+    groups:
+      - name: IWMS Alerts
+        folder: IWMS Alerts
+        interval: 1m
+        rules:
+          # Service Availability Alert
+          - name: Service Availability
+            condition: B
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                model:
+                  expr: up{job=~"iwms.*"} < 1
+                  interval: 1m
+              - refId: B
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  conditions:
+                    - evaluator:
+                        params:
+                          - 0
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params: []
+                      reducer:
+                        type: last
+                      type: query
+            noDataState: Alerting
+            execErrState: Error
+            for: 5m
+            labels:
+              severity: critical
+              team: platform
+            annotations:
+              summary: "Service {{ $labels.job }} is down"
+              description: "Service has been down for more than 5 minutes"
+
+          # High Latency Alert
+          - name: High Latency
+            condition: B
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                model:
+                  expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, service)) > 2
+                  interval: 1m
+              - refId: B
+                relativeTimeRange:
+                  from: 600
+                  to: 0
+                datasourceUid: __expr__
+                model:
+                  conditions:
+                    - evaluator:
+                        params:
+                          - 2
+                        type: gt
+                      operator:
+                        type: and
+                      query:
+                        params: []
+                      reducer:
+                        type: last
+                      type: query
+            noDataState: NoData
+            execErrState: Error
+            for: 10m
+            labels:
+              severity: warning
+              team: application
+            annotations:
+              summary: "High latency detected for {{ $labels.service }}"
+              description: "95th percentile latency is above 2 seconds for 10 minutes"
+
+  notifiers.yaml: |
+    apiVersion: 1
+    notifiers:
+      - name: Email
+        type: email
+        uid: email_notifications
+        org_id: 1
+        is_default: true
+        settings:
+          addresses: ${ALERT_EMAIL_ADDRESSES}
+      - name: PagerDuty
+        type: pagerduty
+        uid: pagerduty_notifications
+        org_id: 1
+        is_default: false
+        settings:
+          integrationKey: ${PAGERDUTY_KEY}
+          severity: critical
