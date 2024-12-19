@@ -1,0 +1,153 @@
+# Loki Configuration v2.8.0
+# Purpose: Enterprise-grade log aggregation for IWMS application
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-config
+  namespace: monitoring
+  labels:
+    app: loki
+    component: monitoring
+    environment: production
+data:
+  loki.yaml: |
+    auth_enabled: true
+    
+    server:
+      http_listen_port: 3100
+      grpc_listen_port: 9095
+      http_server_read_timeout: 30s
+      http_server_write_timeout: 30s
+      grpc_server_max_recv_msg_size: 67108864  # 64MB
+      grpc_server_max_send_msg_size: 67108864  # 64MB
+      log_level: info
+      http_server_idle_timeout: 120s
+      grpc_server_idle_timeout: 120s
+
+    ingester:
+      lifecycler:
+        ring:
+          kvstore:
+            store: memberlist
+          replication_factor: 3
+      chunk_idle_period: 1h
+      chunk_block_size: 262144
+      chunk_encoding: snappy
+      chunk_retain_period: 1m
+      max_transfer_retries: 3
+      wal:
+        enabled: true
+        dir: /loki/wal
+        replay_memory_ceiling: 512MB
+
+    schema_config:
+      configs:
+        - from: "2023-01-01"
+          store: boltdb-shipper
+          object_store: s3
+          schema: v11
+          index:
+            prefix: iwms_index_
+            period: 24h
+
+    storage_config:
+      boltdb_shipper:
+        active_index_directory: /loki/index
+        cache_location: /loki/cache
+        shared_store: s3
+      aws:
+        s3: s3://iwms-logs
+        region: us-west-2
+        insecure: false
+        sse_encryption: true
+        http_config:
+          idle_conn_timeout: 90s
+          response_header_timeout: 30s
+          insecure_skip_verify: false
+        
+    limits_config:
+      retention_period: 30d
+      max_global_streams_per_user: 5000
+      max_query_length: 721h  # 30 days + 1 hour buffer
+      max_query_parallelism: 32
+      max_streams_per_user: 10000
+      reject_old_samples: true
+      reject_old_samples_max_age: 168h  # 7 days
+      creation_grace_period: 1h
+      per_stream_rate_limit: 3MB
+      per_stream_rate_limit_burst: 15MB
+      ingestion_rate_mb: 10
+      ingestion_burst_size_mb: 20
+
+    chunk_store_config:
+      max_look_back_period: 720h  # 30 days
+      chunk_cache_config:
+        enable_fifocache: true
+        fifocache:
+          max_size_bytes: 1073741824  # 1GB
+          validity: 24h
+
+    table_manager:
+      retention_deletes_enabled: true
+      retention_period: 720h  # 30 days
+
+    ruler:
+      storage:
+        type: s3
+        s3:
+          bucket_name: iwms-logs-rules
+      rule_path: /loki/rules
+      alertmanager_url: http://alertmanager.monitoring:9093
+      ring:
+        kvstore:
+          store: memberlist
+      enable_api: true
+      enable_alertmanager_v2: true
+
+    distributor:
+      ring:
+        kvstore:
+          store: memberlist
+      ha_tracker:
+        enable_ha_tracker: true
+        kvstore:
+          store: memberlist
+
+    compactor:
+      working_directory: /loki/compactor
+      shared_store: s3
+      compaction_interval: 10m
+      retention_enabled: true
+      retention_delete_delay: 2h
+      retention_delete_worker_count: 150
+
+    memberlist:
+      join_members:
+        - loki-memberlist
+
+  retention.yaml: |
+    rules:
+      - selector: '{app="iwms"}'
+        retention: 360h  # 15 days
+      - selector: '{component="security"}'
+        retention: 720h  # 30 days
+      - selector: '{component="system"}'
+        retention: 168h  # 7 days
+
+  security.yaml: |
+    authentication:
+      type: oauth2
+      oauth2:
+        client_id: ${OAUTH_CLIENT_ID}
+        client_secret: ${OAUTH_CLIENT_SECRET}
+        token_url: ${OAUTH_TOKEN_URL}
+        proxy_url: ${OAUTH_PROXY_URL}
+    
+    authorization:
+      roles:
+        - name: admin
+          resources: ["*"]
+          actions: ["*"]
+        - name: reader
+          resources: ["logs"]
+          actions: ["read"]
