@@ -1,0 +1,98 @@
+LIGHTWEIGHT IWMS SOFTWARE LICENSE
+                       Version 1.0, January 2024
+
+                        TERMS AND CONDITIONS
+
+1. DEFINITIONS
+
+"License" refers to the terms and conditions for use, reproduction, modification, 
+and distribution as defined in this document.
+
+"Software" refers to the Lightweight Integrated Workplace Management System (IWMS) 
+and associated documentation files.
+
+"Licensor" refers to the copyright owner or entity authorized to grant the License.
+
+"You" refers to the individual or legal entity exercising permissions granted by 
+this License.
+
+2. GRANT OF LICENSE
+
+Subject to the terms and conditions of this License, the Licensor hereby grants 
+You a worldwide, non-exclusive, revocable license to use, reproduce, modify, and 
+distribute the Software in source or binary forms.
+
+3. COMMERCIAL USE
+
+3.1. You are permitted to use the Software for commercial purposes.
+3.2. You may deploy the Software in enterprise environments.
+3.3. You may integrate the Software with third-party systems and services.
+3.4. You may offer the Software as a service (SaaS) to your customers.
+
+4. CONDITIONS AND LIMITATIONS
+
+4.1. Redistributions must retain this License and all copyright notices.
+4.2. Modified versions must be clearly marked as such.
+4.3. Neither the name of the Licensor nor the names of contributors may be used 
+     to endorse or promote products derived from this Software without specific 
+     prior written permission.
+
+5. DATA PROTECTION AND PRIVACY
+
+5.1. You must comply with applicable data protection regulations including but 
+     not limited to GDPR and CCPA when processing personal data using the Software.
+5.2. You must implement appropriate technical and organizational measures to 
+     ensure data security.
+5.3. You must obtain necessary consents for data collection and processing.
+
+6. THIRD-PARTY INTEGRATIONS
+
+6.1. Integration with third-party services must comply with their respective 
+     terms of service and licensing requirements.
+6.2. You are responsible for obtaining necessary licenses and permissions for 
+     third-party components.
+6.3. The Licensor is not liable for third-party service integration issues.
+
+7. ENTERPRISE DEPLOYMENT
+
+7.1. You may deploy the Software across multiple geographic regions.
+7.2. You may modify the Software to meet enterprise requirements.
+7.3. You must maintain the security and integrity of enterprise deployments.
+
+8. WARRANTY DISCLAIMER
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS 
+FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR 
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER 
+IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN 
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+9. COMPLIANCE AND AUDIT
+
+9.1. You must maintain records of Software usage and distribution.
+9.2. The Licensor reserves the right to audit compliance with this License.
+9.3. You must cooperate with compliance investigations.
+
+10. TERMINATION
+
+10.1. This License automatically terminates if you fail to comply with its terms.
+10.2. Upon termination, you must cease all use and distribution of the Software.
+10.3. Sections 8, 9, and 11 survive termination.
+
+11. GOVERNING LAW AND JURISDICTION
+
+11.1. This License is governed by international law without regard to conflict 
+      of law principles.
+11.2. Any disputes shall be resolved in courts of competent jurisdiction.
+
+12. MODIFICATIONS TO LICENSE TERMS
+
+12.1. The Licensor reserves the right to modify these License terms.
+12.2. Modified terms become effective upon notification.
+12.3. Continued use of the Software constitutes acceptance of modified terms.
+
+For questions about this License, please contact: legal@lightweight-iwms.com
+
+Copyright (c) 2024 Lightweight IWMS
+All rights reserved.
