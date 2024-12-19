@@ -1,0 +1,144 @@
+# Frontend CI Workflow
+# Handles building, testing and validating the React web application
+# Version: 1.0.0
+
+name: Frontend CI
+
+# Trigger workflow on push/PR to main/develop branches when web files change
+on:
+  push:
+    branches: 
+      - main
+      - develop
+    paths:
+      - src/web/**
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - src/web/**
+
+# Environment variables
+env:
+  NODE_VERSION: '18.x'
+  WORKING_DIRECTORY: src/web
+  BROWSER_TARGETS: last 2 versions
+  BUILD_MODE: production
+  VITE_BUILD_TARGET: esnext
+  COVERAGE_THRESHOLD: 90
+
+jobs:
+  validate:
+    name: Validate and Test
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v3 - Checkout repository code
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # actions/setup-node@v3 - Setup Node.js environment
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # actions/cache@v3 - Cache npm dependencies
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('src/web/package-lock.json') }}
+
+      # Install project dependencies
+      - name: Install dependencies
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: npm ci
+
+      # Validate core framework versions
+      - name: Framework version check
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: npm list react @mui/material @reduxjs/toolkit d3
+
+      # Run ESLint
+      - name: Lint check
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: npm run lint
+
+      # TypeScript type checking
+      - name: Type check
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: npm run type-check
+
+      # Run tests with coverage reporting
+      - name: Run tests with coverage
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: npm run test:coverage
+        env:
+          CI: true
+          JEST_JUNIT_OUTPUT_DIR: ./coverage
+          JEST_JUNIT_OUTPUT_NAME: junit.xml
+          JEST_JUNIT_CLASSNAME: "{classname}"
+          JEST_JUNIT_TITLE: "{title}"
+
+      # Verify browser compatibility
+      - name: Browser compatibility check
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: npx browserslist-lint
+
+  build:
+    name: Build
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout@v3 - Checkout repository code
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # actions/setup-node@v3 - Setup Node.js environment
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # actions/cache@v3 - Cache npm dependencies
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('src/web/package-lock.json') }}
+
+      # Install project dependencies
+      - name: Install dependencies
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: npm ci
+
+      # Build the application
+      - name: Build application
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: npm run build
+        env:
+          NODE_ENV: production
+          BROWSERSLIST: ${{ env.BROWSER_TARGETS }}
+          VITE_BUILD_TARGET: ${{ env.VITE_BUILD_TARGET }}
+
+      # Analyze bundle size
+      - name: Analyze bundle size
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: npm run analyze-bundle
+
+      # actions/upload-artifact@v3 - Upload build artifacts
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: frontend-build
+          path: src/web/dist
+          retention-days: 5
+
+      # Upload bundle analysis report
+      - name: Upload bundle analysis
+        uses: actions/upload-artifact@v3
+        with:
+          name: bundle-analysis
+          path: src/web/bundle-analysis.html
+          retention-days: 5
