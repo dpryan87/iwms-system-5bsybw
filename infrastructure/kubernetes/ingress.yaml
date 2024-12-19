@@ -1,0 +1,108 @@
+# Kubernetes Ingress Configuration for IWMS Platform
+# API Version: networking.k8s.io/v1
+# Purpose: Manages external access to IWMS services with enhanced security and monitoring
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+
+metadata:
+  name: iwms-ingress
+  namespace: iwms
+  labels:
+    app: iwms
+    environment: ${ENV}
+    component: ingress
+  annotations:
+    # Ingress Controller Configuration
+    kubernetes.io/ingress.class: "nginx"
+    
+    # TLS and Security Configuration
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-min-version: "TLSv1.3"
+    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
+    
+    # Request Handling Configuration
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    
+    # CORS Configuration
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-credentials: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "${CORS_ORIGIN}"
+    
+    # Security Headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+      more_set_headers "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:;";
+    
+    # Rate Limiting
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    nginx.ingress.kubernetes.io/limit-connections: "100"
+    nginx.ingress.kubernetes.io/enable-global-rate-limit: "true"
+    
+    # WAF Configuration
+    nginx.ingress.kubernetes.io/enable-modsecurity: "true"
+    nginx.ingress.kubernetes.io/enable-owasp-core-rules: "true"
+    nginx.ingress.kubernetes.io/modsecurity-snippet: |
+      SecRuleEngine On
+      SecRequestBodyLimit 50000000
+    
+    # SSL/TLS Certificate Management
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+    # Monitoring Configuration
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "80"
+    prometheus.io/scheme: "https"
+    
+    # Load Balancing Configuration
+    nginx.ingress.kubernetes.io/load-balance: "round_robin"
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "IWMS_AFFINITY"
+    nginx.ingress.kubernetes.io/session-cookie-expires: "86400"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "86400"
+
+spec:
+  tls:
+    - hosts:
+        - ${ENV}.iwms.example.com
+      secretName: iwms-tls-cert
+  
+  rules:
+    - host: ${ENV}.iwms.example.com
+      http:
+        paths:
+          # API Backend Routes
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: iwms-backend
+                port:
+                  number: 80
+          
+          # WebSocket Routes
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: iwms-backend
+                port:
+                  number: 80
+          
+          # Frontend Static Content
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: iwms-frontend
+                port:
+                  number: 80
