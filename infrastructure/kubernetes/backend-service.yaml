@@ -1,0 +1,54 @@
+# kubernetes version: v1
+# Purpose: Backend service configuration for pod discovery, load balancing, and monitoring
+# This service exposes the Node.js backend deployment internally within the cluster
+# with proper monitoring and security configurations
+
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: iwms-backend
+  namespace: iwms
+  labels:
+    app: iwms
+    tier: backend
+    environment: production
+    managed-by: kubernetes
+  annotations:
+    # Prometheus monitoring configuration
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "3000"
+    prometheus.io/path: "/metrics"
+    
+    # AWS Load Balancer configurations for internal access
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:region:account:certificate/certificate-id"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+
+spec:
+  # Using ClusterIP for internal service discovery
+  type: ClusterIP
+  
+  # Port configurations for HTTP and HTTPS traffic
+  ports:
+    - port: 80
+      targetPort: 3000
+      protocol: TCP
+      name: http
+    - port: 443
+      targetPort: 3000
+      protocol: TCP
+      name: https
+  
+  # Selector for targeting backend pods
+  selector:
+    app: iwms
+    tier: backend
+    environment: production
+  
+  # Session affinity configuration for consistent routing
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800  # 3-hour session stickiness
