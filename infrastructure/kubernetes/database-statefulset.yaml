@@ -1,0 +1,165 @@
+# Kubernetes StatefulSet for PostgreSQL 14 with TimescaleDB
+# Version: apps/v1
+# Purpose: High-availability database deployment for Lightweight IWMS
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: iwms-postgresql
+  namespace: iwms
+  labels:
+    app: iwms
+    component: database
+    environment: ${ENV}
+    version: "14"
+    managed-by: kubernetes
+  annotations:
+    description: "PostgreSQL with TimescaleDB for IWMS application"
+spec:
+  replicas: 2  # Primary and secondary for high availability
+  selector:
+    matchLabels:
+      app: iwms
+      component: database
+  serviceName: iwms-postgresql-service
+  updateStrategy:
+    type: RollingUpdate
+  podManagementPolicy: OrderedReady
+  template:
+    metadata:
+      labels:
+        app: iwms
+        component: database
+        version: "14"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+        security.alpha.kubernetes.io/sysctls: "kernel.sem=250 32000 100 128"
+    spec:
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsGroup: 999
+      initContainers:
+        - name: init-permissions
+          image: busybox:1.34
+          command: ['sh', '-c', 'chmod 700 /var/lib/postgresql/data']
+          volumeMounts:
+            - name: postgresql-data
+              mountPath: /var/lib/postgresql/data
+      containers:
+        - name: postgresql
+          image: timescale/timescaledb-ha:pg14-latest
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          ports:
+            - containerPort: 5432
+              name: postgresql
+            - containerPort: 9187
+              name: metrics
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: iwms-config
+                  key: DB_NAME
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: iwms-secrets
+                  key: DB_USERNAME
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: iwms-secrets
+                  key: DB_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_INITDB_ARGS
+              value: "--data-checksums"
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1"
+            limits:
+              memory: "4Gi"
+              cpu: "2"
+          volumeMounts:
+            - name: postgresql-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgresql-config
+              mountPath: /etc/postgresql/postgresql.conf
+              subPath: postgresql.conf
+            - name: tls-certs
+              mountPath: /etc/postgresql/tls
+              readOnly: true
+            - name: tmp-dir
+              mountPath: /tmp
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 3
+          startupProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 30
+      volumes:
+        - name: postgresql-config
+          configMap:
+            name: iwms-postgresql-config
+        - name: tls-certs
+          secret:
+            secretName: iwms-postgresql-tls
+        - name: tmp-dir
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - iwms
+                  - key: component
+                    operator: In
+                    values:
+                      - database
+              topologyKey: "kubernetes.io/hostname"
+  volumeClaimTemplates:
+    - metadata:
+        name: postgresql-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 50Gi
+        storageClassName: gp2
